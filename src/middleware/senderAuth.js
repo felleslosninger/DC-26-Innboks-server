@@ -6,8 +6,9 @@ import { hmac } from '../crypto/index.js';
 // authenticated — never a value the caller typed into the request body.
 // A revoked or unknown key is rejected before touching anything else.
 export function authenticateSender(req, res, next) {
-  const authHeader = req.headers.authorization || '';
-  const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const authHeader = (req.headers.authorization || '').trim();
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  const apiKey = match ? match[1].trim() : null;
   if (!apiKey) {
     return res.status(401).json({ error: 'Missing Authorization: Bearer <api_key> header' });
   }
