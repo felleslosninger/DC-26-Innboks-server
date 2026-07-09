@@ -19,7 +19,7 @@ if (!name) {
 const existing = db.prepare('SELECT id FROM sender WHERE name = ? AND revoked_at IS NULL').get(name);
 if (existing) {
   console.error(`A sender named "${name}" already has an active API key. Revoke it first if you want to replace it:`);
-  console.error(`  UPDATE sender SET revoked_at = datetime('now') WHERE name = '${name}';`);
+  console.error(`  UPDATE sender SET revoked_at = datetime('now') WHERE name = '${name.replaceAll("'", "''")}';`);
   process.exit(1);
 }
 
