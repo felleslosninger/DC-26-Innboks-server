@@ -34,15 +34,25 @@ integration here.
 
 ## Flow 2 — Fetch (retrieve + decrypt a message)
 
+0. **Authenticate the sender** — `POST /messages/send` requires
+   `Authorization: Bearer <api_key>` (`src/middleware/senderAuth.js`).
+   Provision a key with `node scripts/create-sender.js <name>` (prints the
+   raw key ONCE — only its hash is stored). `sender_id` on a stored message
+   always comes from this authenticated identity, never from the request
+   body, so no caller can claim to be an agency it isn't. Rate-limited to
+   60 requests/minute per key (`express-rate-limit`).
 1. **Send** (`POST /messages/send`) — the sender (e.g. NAV) encrypts
    client-side using ECIES: fresh ephemeral P-256 keypair → ECDH against the
    recipient's registered public key → HKDF-SHA256 → AES-256-GCM
    (`src/crypto/ecies.js`). A SHA-256 hash of the original plaintext is also
    recorded (`content_hash` — proof-of-content, not a decryption aid; see
    inline comments in `schema.sql`). Only ciphertext + hash + the one-time
-   ephemeral public key reach this server. A content-free silent APNs push
-   (`src/push/apns.js`) then wakes the device — the push payload carries no
-   message content, just "you have mail".
+   ephemeral public key reach this server. A generic APNs push
+   (`src/push/apns.js`) then notifies the device — the same fixed alert
+   text every time ("Ny melding i lommeboken"), never derived from the
+   actual sender or content, so the user sees a real visible notification
+   without Apple (or anyone intercepting the push) learning anything
+   message-specific.
 2. **Challenge** (`GET /messages/challenge/:registrationId`) — the device
    asks for a fresh, single-use nonce.
 3. **Fetch** (`POST /messages/fetch`) — the device signs that nonce with its
@@ -92,10 +102,11 @@ That's a separate, earlier prototype (real APNs push, no PID binding, no
 encryption, broadcasts every message to every registered device) that
 `Wallet/MessagingBackend.swift` and `InboxTabViewModel.swift` originally
 pointed to. This server absorbs its push-delivery role
-(`src/push/apns.js`, ported with one change: the original sent message
-title/body in cleartext as part of the push alert, which would leak
-content through Apple's push servers — this version sends a content-free
-background push instead) while adding the PID binding and E2EE it lacked.
+(`src/push/apns.js`, ported with one change: the original sent the
+message's actual title/body in the push alert, which would leak content
+through Apple's push servers — this version sends the same fixed, generic
+alert text every time instead) while adding the PID binding and E2EE it
+lacked.
 This server defaults to port 3001 (not 3000) specifically to avoid that
 collision — see `.env.example`.
 
@@ -107,5 +118,6 @@ collision — see `.env.example`.
   credential's own `cnf` claim at issuance.
 - No dedicated push-token-refresh endpoint (would sign a fresh challenge
   instead of repeating the whole key-binding ceremony).
-- No message expiry/deletion policy, no rate limiting.
-- Keys come from `.env`, not a KMS.
+- No message expiry/deletion policy.
+- Keys come from `.env`, not a KMS. Sender API keys are provisioned by
+  hand via a script, not a real onboarding/admin flow.
